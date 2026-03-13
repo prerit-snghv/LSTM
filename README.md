@@ -1,6 +1,6 @@
-URECA 25-26
+# URECA 25-26
 
-# LSTM FPGA Accelerator
+## LSTM FPGA Accelerator
 
 Hardware implementation of LSTM inference on Zedboard FPGA.
 
