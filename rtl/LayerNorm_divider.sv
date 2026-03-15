@@ -31,6 +31,6 @@ module LayerNorm_divider #(
     logic signed [ACC_WIDTH + DATA_WIDTH - 1:0] full_product;
 
     assign full_product = data_in * inv_N;
-    assign data_out = $signed(full_product[31:16]);
+    assign data_out = $signed(full_product[31:16] + full_product[15]);
 
 endmodule

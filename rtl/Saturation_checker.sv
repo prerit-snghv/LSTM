@@ -30,7 +30,7 @@ module Saturation_checker #(
     
     always_comb begin
         if(|data_in[ACC_WIDTH-2:DATA_WIDTH-1] && !data_in[ACC_WIDTH-1]) data_out = $signed(16'h7FFF);
-        else if (&data_in[ACC_WIDTH-2:DATA_WIDTH-1] && data_in[ACC_WIDTH-1]) data_out = $signed(16'h8000);
+        else if (~&data_in[ACC_WIDTH-2:DATA_WIDTH-1] && data_in[ACC_WIDTH-1]) data_out = $signed(16'h8000);
         else data_out = $signed(data_in[DATA_WIDTH-1:0]);
     end
     

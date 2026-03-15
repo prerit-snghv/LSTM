@@ -53,7 +53,7 @@ module tb_Processor_top;
         $monitor("Time: %0t | MAC_Out: %h | Mean_We: %b | Mean_Out: %h", $time, final_out, mean_we, mean_out);
         
         rst = 1;
-        clr = 1;  
+        clr = 0;  
         en  = 0;
         mean_we = 0;
         var_we = 0;
@@ -63,18 +63,6 @@ module tb_Processor_top;
         data_in_b = 16'b0;
         inv_N = 16'b0;
         #10; 
-
-        rst = 0;
-        en = 0;
-        clr = 0;
-        mean_we = 0;
-        var_we = 0;
-        mux_a_sel = 2'b0;
-        mux_b_sel = 2'b0;
-        data_in_a = 16'b0;
-        data_in_b = 16'b0;
-        inv_N = 16'b0;
-        #10;        
         
         rst = 0;
         en = 1;
@@ -127,9 +115,8 @@ module tb_Processor_top;
         end else begin
             $display("ERROR: Mean calculation failed. Expected: 0200, Got: %h", mean_out);
         end
-        
-        #10;
 
+        mean_we = 0;
         clr =1;
         #10;
 
@@ -147,9 +134,29 @@ module tb_Processor_top;
         data_in_a = 16'h0300;
         #10;
         en = 0;
+        data_in_a = 16'b0; 
+        inv_N = 16'h5555;
         var_we = 1;
         #10;
+        
         var_we = 0;
+        mux_a_sel = 2'b01;
+        mux_b_sel = 2'b11;
+        clr = 1;
+        #10;
+        // clr = 0;
+        en = 1;
+        data_in_a = 16'h0100;
+        #10;
+        data_in_a = 16'h0200;
+        #10;
+        data_in_a = 16'h0300;
+        #10;
+        data_in_a = 16'h0000;
+        en = 0;
+        #10;
+        #10;
+        $finish;
     end
 
 

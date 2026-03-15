@@ -23,9 +23,12 @@
 module LayerNorm_LUT #(
     parameter DATA_WIDTH, DEPTH                     // memory depth
 )(
+
     input clk,
     input signed [DATA_WIDTH-1:0] data_in,          // variance
+    
     output logic signed [DATA_WIDTH-1:0] data_out   // inverse of square root
+    
     );
 
     logic signed [DATA_WIDTH-1:0] rom_memory [0:DEPTH-1];
