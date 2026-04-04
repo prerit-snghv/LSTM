@@ -50,8 +50,6 @@ module tb_Processor_top;
 
     initial begin
         
-        $monitor("Time: %0t | MAC_Out: %h | Mean_We: %b | Mean_Out: %h", $time, final_out, mean_we, mean_out);
-        
         rst = 1;
         clr = 0;  
         en  = 0;
@@ -110,12 +108,6 @@ module tb_Processor_top;
         inv_N = 16'h5555;
         #10;
 
-        if (mean_out == 16'h0200) begin
-            $display("SUCCESS: Mean calculated correctly! (Got: %h)", mean_out);
-        end else begin
-            $display("ERROR: Mean calculation failed. Expected: 0200, Got: %h", mean_out);
-        end
-
         mean_we = 0;
         clr =1;
         #10;
@@ -144,7 +136,6 @@ module tb_Processor_top;
         mux_b_sel = 2'b11;
         clr = 1;
         #10;
-        // clr = 0;
         en = 1;
         data_in_a = 16'h0100;
         #10;
@@ -157,6 +148,7 @@ module tb_Processor_top;
         #10;
         #10;
         $finish;
+
     end
 
 

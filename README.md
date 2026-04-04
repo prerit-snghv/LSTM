@@ -13,9 +13,9 @@ scripts/    Vivado project generation scripts
 
 ## Requirements
 
-Vivado 2024.x
+Vivado 2024.x 
 Zedboard (xc7z020)
 
 ## Build
 
-vivado -source scripts/create_project.tcl
+vivado -source scripts/create_project.tcl 
