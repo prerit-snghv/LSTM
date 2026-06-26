@@ -5,7 +5,7 @@
 // 
 // Create Date: 28.02.2026 17:07:30
 // Design Name: 
-// Module Name: LSTM_cell
+// Module Name: LSTM_cell_dp
 // Project Name: 
 // Target Devices: 
 // Tool Versions: 
@@ -23,6 +23,7 @@
 module LSTM_cell_dp #(
     parameter DATA_WIDTH = 16,
     parameter ACC_WIDTH = 48,
+    parameter SAT_WIDTH = 32,
     parameter FRACT_WIDTH = 12
 )(
     input logic clk, rst, en,
@@ -62,6 +63,28 @@ module LSTM_cell_dp #(
     output logic signed [DATA_WIDTH-1:0] h_t,
     output logic signed [DATA_WIDTH-1:0] c_t
     );
+    
+    localparam signed [DATA_WIDTH-1:0] ONE = (1 <<< FRACT_WIDTH);
+
+    function logic signed [DATA_WIDTH-1:0] saturation_mul (input logic signed [DATA_WIDTH-1:0] a, input logic signed [DATA_WIDTH-1:0] b);
+        logic signed [DATA_WIDTH-1:0] sat_result;
+        logic signed [SAT_WIDTH-1:0] result;
+        result = (a * b)>>>FRACT_WIDTH;
+        if(|result[SAT_WIDTH-2:DATA_WIDTH-1] && !result[SAT_WIDTH-1]) sat_result = $signed(16'h7FFF);
+        else if (~&result[SAT_WIDTH-2:DATA_WIDTH-1] && result[SAT_WIDTH-1]) sat_result = $signed(16'h8000);
+        else sat_result = $signed(result[DATA_WIDTH-1:0]);
+    return sat_result;
+    endfunction : saturation_mul
+
+    function logic signed [DATA_WIDTH-1:0] saturation_add (input logic signed [DATA_WIDTH-1:0] a, input logic signed [DATA_WIDTH-1:0] b);
+        logic signed [DATA_WIDTH-1:0] sat_result;
+        logic signed [DATA_WIDTH:0] result;
+        result = ($signed({a[DATA_WIDTH-1], a}) + $signed({b[DATA_WIDTH-1], b}));
+        if(result > $signed({1'b0, {DATA_WIDTH-1{1'b1}}})) sat_result = $signed({1'b0, {DATA_WIDTH-1{1'b1}}});
+        else if (result < $signed({1'b1, {DATA_WIDTH-1{1'b0}}})) sat_result = $signed({1'b1, {DATA_WIDTH-1{1'b0}}});
+        else sat_result = $signed(result[DATA_WIDTH-1:0]);
+    return sat_result;
+    endfunction : saturation_add
 
     logic signed [DATA_WIDTH-1:0] preact_wire;
     logic signed [DATA_WIDTH-1:0] act_wire;
@@ -131,6 +154,7 @@ module LSTM_cell_dp #(
             2'b00 : operand_b = x_t;
             2'b01 : operand_b = h_prev;
             2'b10 : operand_b = c_prev;
+            2'b11 : operand_b = ONE;
             default : operand_b = 16'h0;
         endcase
     end
@@ -139,7 +163,7 @@ module LSTM_cell_dp #(
         .DATA_WIDTH (DATA_WIDTH),
         .ACC_WIDTH  (ACC_WIDTH),
         .FRACT_WIDTH(FRACT_WIDTH)
-     ) processor_top_1 (
+     ) processorTop (
         .clk      (clk),
         .rst      (rst),
         .en       (proc_en),
@@ -155,8 +179,9 @@ module LSTM_cell_dp #(
     end
 
     ActFn #(
-        .DATA_WIDTH(DATA_WIDTH)
-    ) actfn0 (
+        .DATA_WIDTH(DATA_WIDTH),
+        .FRACT_WIDTH(FRACT_WIDTH)
+    ) actFn0 (
         .act_fn(act_fn),
         .data_in (preact_reg),
         .data_out(act_wire)
@@ -166,8 +191,9 @@ module LSTM_cell_dp #(
     logic signed [DATA_WIDTH-1:0] c_reg_tanh;
 
     ActFn #(
-        .DATA_WIDTH(DATA_WIDTH)
-     ) actfn1 (
+        .DATA_WIDTH(DATA_WIDTH),
+        .FRACT_WIDTH(FRACT_WIDTH)
+     ) actFn1 (
         .act_fn  (tanh_c_t),
         .data_in (c_reg),
         .data_out(c_reg_tanh)
@@ -193,13 +219,12 @@ module LSTM_cell_dp #(
             h_reg <= 0;
         end
         else begin
-            if(en && load_c) c_reg <= $signed(f_reg * c_prev) + $signed(i_reg * g_reg);
-            if(en && load_h) h_reg <= $signed(o_reg * c_reg_tanh);
+            if(en && load_c) c_reg <= saturation_add(saturation_mul(f_reg, c_prev), saturation_mul(i_reg , g_reg));
+            if(en && load_h) h_reg <= saturation_mul(o_reg , c_reg_tanh);
         end
     end
 
     assign c_t = c_reg;
     assign h_t = h_reg;
-
 
 endmodule
