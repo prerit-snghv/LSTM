@@ -21,141 +21,96 @@
 
 module tb_Processor_top;
 
-    logic clk, rst, en, clr, mean_we, var_we;
-    logic [1:0] mux_a_sel;
-    logic [1:0] mux_b_sel;
-    logic signed [15:0] data_in_a;
-    logic signed [15:0] data_in_b;
-    logic signed [15:0] inv_N;
-    logic signed [15:0] final_out;
-    logic signed [15:0] mean_out;
-    logic signed [15:0] var_out;
+    localparam integer DATA_WIDTH = 16;
+    localparam integer FRACT_WIDTH = 12;
+    localparam integer ACC_WIDTH = 48;
 
-    Processor_top dut (
+    logic clk, rst, en, clr;
+    logic signed [DATA_WIDTH-1:0] data_in_a;
+    logic signed [DATA_WIDTH-1:0] data_in_b;
+    logic signed [DATA_WIDTH-1:0] final_out;
+
+    integer pass_count;
+    integer fail_count;
+
+    Processor_top #(
+        .DATA_WIDTH(DATA_WIDTH),
+        .ACC_WIDTH(ACC_WIDTH),
+        .FRACT_WIDTH(FRACT_WIDTH)
+    ) dut (
         .clk      (clk),
         .rst      (rst),
         .en       (en),
         .clr      (clr),
-        .mean_we  (mean_we),
-        .var_we   (var_we),
-        .mux_a_sel(mux_a_sel),
-        .mux_b_sel(mux_b_sel),
         .data_in_a(data_in_a),
         .data_in_b(data_in_b),
-        .inv_N    (inv_N),
-        .final_out(final_out),
-        .mean_out (mean_out),
-        .var_out  (var_out)
+        .final_out(final_out)
     );
 
+    // Clock generation
     initial begin
-        
-        rst = 1;
-        clr = 0;  
-        en  = 0;
-        mean_we = 0;
-        var_we = 0;
-        mux_a_sel = 2'b00;
-        mux_b_sel = 2'b00;
-        data_in_a = 16'b0;
-        data_in_b = 16'b0;
-        inv_N = 16'b0;
-        #10; 
-        
-        rst = 0;
-        en = 1;
-        clr = 0;
-        mean_we = 0;
-        var_we = 0;
-        mux_a_sel = 2'b00;
-        mux_b_sel = 2'b01;
-        data_in_a = 16'h0100;
-        data_in_b = 16'b0;
-        inv_N = 16'b0;
-        #10;
-        rst = 0;
-        en = 1;
-        clr = 0;
-        mean_we = 0;
-        var_we = 0;
-        mux_a_sel = 2'b00;
-        mux_b_sel = 2'b01;
-        data_in_a = 16'h0200;
-        data_in_b = 16'b0;
-        inv_N = 16'b0;
-        #10;
-        rst = 0;
-        en = 1;
-        clr = 0;
-        mean_we = 0;
-        var_we = 0;
-        mux_a_sel = 2'b00;
-        mux_b_sel = 2'b01;
-        data_in_a = 16'h0300;
-        data_in_b = 16'b0;
-        inv_N = 16'b0;
-        #10;
-        
-        rst = 0;
-        en = 0;
-        clr = 0;
-        mean_we = 1;
-        var_we = 0;
-        mux_a_sel = 2'b00;
-        mux_b_sel = 2'b01;
-        data_in_a = 16'b0;
-        data_in_b = 16'b0;
-        inv_N = 16'h5555;
-        #10;
+        clk = 0;
+        forever #5 clk = ~clk;  // 100 MHz clock
+    end
 
-        mean_we = 0;
-        clr =1;
-        #10;
+    task automatic apply_and_check;
+        input logic test_rst;
+        input logic test_clr;
+        input logic test_en;
+        input logic signed [DATA_WIDTH-1:0] operand_a;
+        input logic signed [DATA_WIDTH-1:0] operand_b;
+        input logic signed [DATA_WIDTH-1:0] expected;
+        input [127:0] label;
+        begin
+            @(negedge clk);
+            rst = test_rst;
+            clr = test_clr;
+            en = test_en;
+            data_in_a = operand_a;
+            data_in_b = operand_b;
 
-        rst = 0;
-        en = 1;
-        clr = 0;
-        mean_we = 0;
-        var_we = 0;
-        mux_a_sel = 2'b01;
-        mux_b_sel = 2'b10;
-        data_in_a = 16'h0100;
-        #10;
-        data_in_a = 16'h0200;
-        #10;
-        data_in_a = 16'h0300;
-        #10;
-        en = 0;
-        data_in_a = 16'b0; 
-        inv_N = 16'h5555;
-        var_we = 1;
-        #10;
-        
-        var_we = 0;
-        mux_a_sel = 2'b01;
-        mux_b_sel = 2'b11;
-        clr = 1;
-        #10;
-        en = 1;
-        data_in_a = 16'h0100;
-        #10;
-        data_in_a = 16'h0200;
-        #10;
-        data_in_a = 16'h0300;
-        #10;
-        data_in_a = 16'h0000;
-        en = 0;
-        #10;
+            @(posedge clk);
+            #1;
+
+            if (final_out === expected) begin
+                pass_count = pass_count + 1;
+                $display("PASS %-16s output=%0d expected=%0d", label, final_out, expected);
+            end
+            else begin
+                fail_count = fail_count + 1;
+                $display("FAIL %-16s output=%0d expected=%0d", label, final_out, expected);
+            end
+        end
+    endtask
+
+    initial begin
+        rst = 1'b0;
+        clr = 1'b0;
+        en = 1'b0;
+        data_in_a = '0;
+        data_in_b = '0;
+        pass_count = 0;
+        fail_count = 0;
+
+        apply_and_check(1'b1, 1'b0, 1'b0, 16'sd0,      16'sd0,     16'sd0,      "reset");
+        apply_and_check(1'b0, 1'b1, 1'b0, 16'sd4096,   16'sd2048,  16'sd2048,   "clr 1.0*0.5");
+        apply_and_check(1'b0, 1'b0, 1'b1, 16'sd4096,   16'sd2048,  16'sd4096,   "acc +1.0*0.5");
+        apply_and_check(1'b0, 1'b0, 1'b0, 16'sd16384,  16'sd16384, 16'sd4096,   "hold");
+        apply_and_check(1'b0, 1'b0, 1'b1, -16'sd4096,  16'sd2048,  16'sd2048,   "acc -1.0*0.5");
+        apply_and_check(1'b0, 1'b1, 1'b0, 16'sd32767,  16'sd32767, 16'sh7fff,   "positive sat");
+        apply_and_check(1'b0, 1'b1, 1'b0, -16'sd32768, 16'sd32767, 16'sh8000,   "negative sat");
+
+        $display("Test summary: pass=%0d fail=%0d", pass_count, fail_count);
+
+        if (fail_count == 0) begin
+            $display("tb_Processor_top completed successfully.");
+        end
+        else begin
+            $fatal(1, "tb_Processor_top detected %0d failures.", fail_count);
+        end
+
         #10;
         $finish;
-
     end
-
-
-    always begin
-        clk <= 0; #5;
-        clk <= 1; #5;
-    end
-
 
 endmodule

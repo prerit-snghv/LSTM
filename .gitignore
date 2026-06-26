@@ -1,18 +1,24 @@
-# Vivado generated files
+# Vivado and XSim generated files
 *.jou
 *.log
+*.pb
 *.str
-*.cache
-*.hw
-*.runs
-*.gen
-*.sim
-*.ip_user_files
-*.Xil
+*.wdb
+.Xil/
+*.cache/
+*.hw/
+*.runs/
+*.gen/
+*.sim/
+*.ip_user_files/
+xsim.dir/
 
 # build artifacts
 *.bit
 *.bin
+
+# memory files
+*.mem
 
 # temporary
 *.tmp
@@ -20,3 +26,20 @@
 # OS files
 .DS_Store
 Thumbs.db
+
+.vscode/
+
+# graphify output
+graphify-out/
+
+# waveform dumps
+*.vcd
+
+# Codex/local agent state
+.codex/
+
+# HDL graph/generated visual outputs
+*.html
+.hdl-kgraph/
+rtl/.hdl-kgraph/
+rtl/.github/

@@ -44,17 +44,15 @@ module MAC #(
     assign product = data_in_a * data_in_b;
     assign shifted_32 = product >>> FRACT_WIDTH;
     assign shifted_product = shifted_32;
-    assign sum = data_out + shifted_product;
+    assign sum = $signed({data_out[ACC_WIDTH-1],data_out}) + $signed({shifted_product[ACC_WIDTH-1],shifted_product});
     
     always@(posedge clk) begin
         if (rst) data_out <= 0;
         else if (clr) data_out <= shifted_product;
         else if (en) begin
-            if ((shifted_product[ACC_WIDTH-1] == data_out[ACC_WIDTH-1]) && (shifted_product[ACC_WIDTH-1] != sum[ACC_WIDTH-1])) begin
-                if (data_out[ACC_WIDTH-1] == 1'b0) data_out <= {1'b0, {(ACC_WIDTH-1){1'b1}}};
-                else data_out <= $signed({1'b1, {(ACC_WIDTH-1){1'b0}}});
-            end
-            else data_out <= $signed(sum[2*DATA_WIDTH-1:0]);
+            if (sum[ACC_WIDTH:ACC_WIDTH-1] == 2'b01) data_out <= {1'b0, {(ACC_WIDTH-1){1'b1}}}; // Positive Saturation
+            else if (sum[ACC_WIDTH:ACC_WIDTH-1] == 2'b10) data_out <= $signed({1'b1, {(ACC_WIDTH-1){1'b0}}}); // Negative Saturation
+            else data_out <= $signed(sum[ACC_WIDTH-1:0]);
         end
     end
     

@@ -9,6 +9,7 @@
 module tb_actfn;
 
     localparam integer DATA_WIDTH = 16;
+    localparam integer FRACT_WIDTH = 12;
     localparam real Q_SCALE = 4096.0;
     localparam integer SIG_TOLERANCE = 16;
     localparam integer TANH_TOLERANCE = 16;
@@ -27,7 +28,8 @@ module tb_actfn;
     real tolerance_real;
 
     ActFn #(
-        .DATA_WIDTH(DATA_WIDTH)
+        .DATA_WIDTH(DATA_WIDTH),
+        .FRACT_WIDTH(FRACT_WIDTH)
     ) dut (
         .act_fn(act_fn),
         .data_in(data_in),

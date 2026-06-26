@@ -20,7 +20,8 @@
 //////////////////////////////////////////////////////////////////////////////////
 
 module ActFn #(
-    parameter DATA_WIDTH
+    parameter DATA_WIDTH = 16,
+    parameter FRACT_WIDTH = 12
 )(
 
     input act_fn,
@@ -28,13 +29,12 @@ module ActFn #(
     output logic signed [DATA_WIDTH-1:0] data_out
     
     );
-    // int counter = 0;
+
 
     logic [DATA_WIDTH-1:0] x_abs;
     logic signed [DATA_WIDTH-1:0] poly_data;
-    logic signed [2*DATA_WIDTH-1:0] stage1_mul;
-    logic signed [2*DATA_WIDTH-1:0] stage2_mul;
-    logic signed [2*DATA_WIDTH-1:0] stage3_mul;
+    // Lower fractional bits are truncated by FP shift
+    // Intentional for Q-format polynomial evaluation
     logic signed [DATA_WIDTH-1:0] stage1;
     logic signed [DATA_WIDTH-1:0] stage2;
     logic flag_neg;
@@ -46,9 +46,12 @@ module ActFn #(
     logic [DATA_WIDTH:0] abs_wide;
     logic [DATA_WIDTH:0] scaled_abs_wide;
 
-    localparam signed [DATA_WIDTH-1:0] ONE = 16'sd4096;
-    localparam signed [DATA_WIDTH-1:0] THREE = 16'sd12288;
-    localparam signed [DATA_WIDTH-1:0] FIVE = 16'sd20480;
+    localparam signed [DATA_WIDTH-1:0] MAXPOS = 16'sh7FFF;
+    localparam signed [DATA_WIDTH-1:0] MAXNEG = 16'sh8000;
+
+    localparam signed [DATA_WIDTH-1:0] ONE = (1 <<< FRACT_WIDTH);
+    localparam signed [DATA_WIDTH-1:0] THREE = (3 <<< FRACT_WIDTH);
+    localparam signed [DATA_WIDTH-1:0] FIVE = (5 <<< FRACT_WIDTH);
 
     localparam signed [DATA_WIDTH-1:0] SIG0_C0 = 16'sd2048;
     localparam signed [DATA_WIDTH-1:0] SIG0_C1 = 16'sd1024;
@@ -65,14 +68,30 @@ module ActFn #(
     localparam signed [DATA_WIDTH-1:0] SIG2_C2 = -16'sd225;
     localparam signed [DATA_WIDTH-1:0] SIG2_C3 = 16'sd16;
 
+    function logic signed [DATA_WIDTH-1:0] saturation_result (
+        input logic [DATA_WIDTH-1:0] a,
+        input logic signed [DATA_WIDTH-1:0] b
+    );
+        logic signed [DATA_WIDTH-1:0] sat_result;
+        logic signed [2*DATA_WIDTH+2:0] result;
+
+        result = ($signed({1'b0, a}) * $signed({b[DATA_WIDTH-1], b})) >>> FRACT_WIDTH;
+
+        if (|result[2*DATA_WIDTH+1:DATA_WIDTH-1] && !result[2*DATA_WIDTH+2]) sat_result = MAXPOS;
+        else if (~&result[2*DATA_WIDTH+1:DATA_WIDTH-1] && result[2*DATA_WIDTH+2]) sat_result = MAXNEG;
+        else sat_result = $signed(result[DATA_WIDTH-1:0]);
+
+        return sat_result;
+    endfunction
+
     always_comb begin
         if(data_in[DATA_WIDTH-1]==1) begin
             flag_neg = 1'b1;
-            abs_wide = $signed({1'b0, (~data_in) + 1'b1});
+            abs_wide = {1'b0, (~($unsigned(data_in)) + 1'b1)};
         end
         else begin
             flag_neg = 1'b0;
-            abs_wide = $signed({1'b0, data_in});
+            abs_wide = {1'b0, data_in};
         end
 
         if (act_fn) begin
@@ -85,7 +104,7 @@ module ActFn #(
 
         // Clamp before narrowing back to DATA_WIDTH so the doubled tanh input
         // saturates cleanly instead of wrapping on overflow.
-        if (scaled_abs_wide > $signed({1'b0, {DATA_WIDTH{1'b1}}})) begin
+        if (scaled_abs_wide > {1'b0, {DATA_WIDTH{1'b1}}}) begin
             x_abs = {DATA_WIDTH{1'b1}};
         end
         else begin
@@ -94,13 +113,13 @@ module ActFn #(
     end
 
     always_comb begin
-        if(x_abs < ONE) begin
+        if($unsigned(x_abs) < $unsigned(ONE)) begin
             seg = 2'b00;
         end
-        else if(x_abs < THREE) begin
+        else if($unsigned(x_abs) < $unsigned(THREE)) begin
             seg = 2'b01;
         end
-        else if(x_abs < FIVE) begin
+        else if($unsigned(x_abs) < $unsigned(FIVE)) begin
             seg = 2'b10;
         end
         else seg = 2'b11;
@@ -137,31 +156,25 @@ module ActFn #(
 
     always_comb begin
         if (seg == 2'b11) begin
-            stage1_mul = 32'sd0;
             stage1 = 16'sd0;
-            stage2_mul = 32'sd0;
             stage2 = 16'sd0;
-            stage3_mul = 32'sd0;
             poly_data = ONE;
         end
         else begin
-            stage1_mul = x_abs * c3;
-            stage1 = (stage1_mul >>> 12) + c2;
-            stage2_mul = stage1 * x_abs;
-            stage2 = (stage2_mul >>> 12) + c1;
-            stage3_mul = stage2 * x_abs;
-            poly_data = (stage3_mul >>> 12) + c0;
+            stage1 =  saturation_result(x_abs, c3) + c2;
+            stage2 =  saturation_result(x_abs, stage1) + c1;
+            poly_data = saturation_result(x_abs, stage2) + c0;
         end
         if (poly_data > ONE) poly_data = ONE;
-        else if (poly_data < 0) poly_data = 16'sd0;
+        else if (poly_data < 16'sd0) poly_data = 16'sd0;
     end
 
     always_comb begin
         case(flag_neg)
             // Positive tanh branch: 2*sigmoid(2x) - 1. Sigmoid mode just returns poly_data.
-            1'b0: data_out = (act_fn) ?  ((poly_data << 1) - ONE) : poly_data ;
+            1'b0: data_out = (act_fn) ?  ((poly_data <<< 1) - ONE) : poly_data ;
             // Negative tanh branch uses tanh(-x) = -tanh(x). Sigmoid mode uses 1-sigmoid(|x|).
-            1'b1: data_out = (act_fn) ? (((ONE - poly_data) << 1) - ONE) : (ONE - poly_data);
+            1'b1: data_out = (act_fn) ? (((ONE - poly_data) <<< 1) - ONE) : (ONE - poly_data);
             default: data_out = 16'sd0;
         endcase
     end
