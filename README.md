@@ -3,9 +3,10 @@
 Hardware implementation of a fixed-point LSTM inference datapath for a Xilinx
 Zedboard-class FPGA.
 
-This project is currently focused on building and verifying a scalar LSTM cell
-from reusable RTL blocks. The single-cell datapath, control path, wrapper, and
-testbenches are now in place and passing the current golden test cases.
+This project is currently focused on building and verifying a scalar,
+fixed-point LSTM execution path from reusable RTL blocks. The single-cell
+datapath, control path, wrapper, parameterized sequence controller, and
+testbenches are now in place for multi-timestep scalar inference experiments.
 
 ## Current Status
 
@@ -16,7 +17,8 @@ Implemented and verified:
 - LSTM cell datapath: `rtl/LSTM_cell_dp.sv`
 - LSTM cell control FSM: `rtl/LSTM_cell_cp.sv`
 - Integrated LSTM cell wrapper: `rtl/LSTM_cell.sv`
-- Testbenches for activation, datapath, control path, and integrated cell
+- Parameterized scalar sequence controller: `rtl/LSTM_seq_ctrl.sv`
+- Testbenches for activation, datapath, control path, integrated cell, and sequence controller
 
 The integrated cell testbench currently passes these cases:
 
@@ -25,6 +27,10 @@ The integrated cell testbench currently passes these cases:
 - `Nonzero_u`
 - `Nonzero_bias`
 - `Near_saturation`
+
+The sequence-controller testbench exercises the parameterized `x_seq[NUM_STEPS]`
+interface for `NUM_STEPS = 2`, `3`, and `4`, including nominal, recurrent,
+bias/mixed-sign, near-saturation, and held-start protocol cases.
 
 ## Architecture
 
@@ -70,6 +76,7 @@ docs/     Design notes and architecture summaries
 | `rtl/LSTM_cell_dp.sv` | LSTM datapath with gate registers and final state computation |
 | `rtl/LSTM_cell_cp.sv` | FSM that sequences the datapath micro-operations |
 | `rtl/LSTM_cell.sv` | Integrated LSTM cell wrapper connecting CP and DP |
+| `rtl/LSTM_seq_ctrl.sv` | Parameterized sequence controller that reuses the scalar cell across `NUM_STEPS` |
 | `rtl/BRAM.sv` | Basic memory utility module |
 
 ## Testbenches
@@ -81,6 +88,7 @@ docs/     Design notes and architecture summaries
 | `tb/tb_LSTM_cell_dp.sv` | Datapath math and internal gate sequencing |
 | `tb/tb_LSTM_cell_cp.sv` | Control FSM signal sequence |
 | `tb/tb_LSTM_cell.sv` | Full CP + DP wrapper behavior |
+| `tb/tb_LSTM_seq_ctrl.sv` | Parameterized multi-step sequence execution and recurrent state feedback |
 
 For the current LSTM milestone, run these first:
 
@@ -88,14 +96,16 @@ For the current LSTM milestone, run these first:
 tb_LSTM_cell_cp
 tb_LSTM_cell_dp
 tb_LSTM_cell
+tb_LSTM_seq_ctrl
 ```
 
-The wrapper testbench checks:
+The cell and sequence wrapper testbenches check:
 
 - reset behavior
 - `start` / `done` behavior
 - timeout protection
 - final `c_t` and `h_t` against golden expected values
+- final sequence `c_final` and `h_final` across multiple `NUM_STEPS` settings
 - `done` staying high while `start` remains high
 - `done` returning low after `start` is deasserted
 
@@ -118,14 +128,13 @@ In Vivado, add the RTL files from `rtl/` and run the desired testbench from
 
 Next planned milestones:
 
-1. Freeze the verified single-cell milestone.
-2. Build an LSTM sequence controller that runs the cell for multiple timesteps.
-3. Feed `h_t` and `c_t` back as `h_prev` and `c_prev` between timesteps.
-4. Add input sequence storage for multiple `x_t` values.
-5. Add weight and bias storage using registers or BRAM.
-6. Build a higher-level `LSTM_top.sv`.
-7. Create a top-level testbench for full sequence execution.
-8. Run synthesis checks for FPGA readiness.
+1. Freeze the verified scalar cell and parameterized sequence-controller milestone.
+2. Use the sequence-controller regression outputs for cycle-count and fixed-point error reporting.
+3. Add an input or memory path for loading longer `x_seq` vectors.
+4. Add weight and bias storage using registers or BRAM.
+5. Build a higher-level `LSTM_top.sv`.
+6. Create a top-level testbench for full accelerator-style execution.
+7. Run synthesis checks for FPGA readiness.
 
 ## Target
 

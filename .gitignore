@@ -37,6 +37,9 @@ graphify-out/
 
 # Codex/local agent state
 .codex/
+AGENTS.md
+**/AGENTS.md
+.graphifyignore
 
 # HDL graph/generated visual outputs
 *.html

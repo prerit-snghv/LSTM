@@ -12,6 +12,7 @@ At the moment, the center of gravity of the project is not a complete top-level 
 - Saturation and fixed-point handling
 - A polynomial activation block for sigmoid and tanh
 - An LSTM cell datapath module that reuses the arithmetic core across the four gates
+- A cell-level controller and sequence-level controller for parameterized scalar LSTM execution
 - Supporting utility modules such as BRAM and a generic mux
 
 ## 2. Numerical Format And Arithmetic Policy
@@ -39,7 +40,7 @@ This is a sensible FPGA-oriented choice because it keeps the model numerically s
 
 ## 3. Current Architectural Direction
 
-The current design is centered around `rtl/LSTM_cell_dp.sv`, which is the only module that really reflects the present LSTM architecture.
+The current design is centered around the scalar LSTM execution path: `rtl/LSTM_cell_dp.sv` for arithmetic, `rtl/LSTM_cell_cp.sv` for one-timestep micro-operations, `rtl/LSTM_cell.sv` as the cell wrapper, and `rtl/LSTM_seq_ctrl.sv` for the parameterized sequence wrapper.
 
 The intended LSTM equations are the standard ones:
 
@@ -100,7 +101,7 @@ Architectural meaning:
 Important implication:
 
 - The control logic above this block must present operands over multiple cycles in the correct order
-- The current project does not yet include a finished controller FSM for this sequencing
+- `LSTM_cell_cp.sv` now provides this micro-operation sequencing for one scalar timestep
 
 ### 4.3 `Saturation_checker.sv`
 
@@ -178,7 +179,7 @@ Internal structure:
 Control philosophy:
 
 - This module is datapath-only
-- An external controller is expected to issue the micro-operations
+- `LSTM_cell_cp.sv` issues these micro-operations when used through the `LSTM_cell.sv` wrapper
 
 The important control signals are:
 
@@ -214,14 +215,29 @@ This tells us the project is still in a bring-up / architecture exploration stag
 
 ### 4.6 `LSTM_cell.sv`
 
-This module is only a stub. It does not currently contribute functionality.
+This module wraps the LSTM cell datapath with `LSTM_cell_cp.sv`, the micro-operation controller for one scalar timestep.
 
-Interpretation:
+Behavior:
 
-- The project likely intends to wrap the datapath and a future controller in this module
-- That integration has not yet been implemented
+- Accepts `start` for one cell evaluation
+- Sequences gate pre-activation, activation, `c_t`, and `h_t` operations through the datapath
+- Asserts `done` after the timestep result is available
+- Holds `done` high while `start` remains high, then returns to idle when `start` is released
 
-### 4.7 `BRAM.sv`
+### 4.7 `LSTM_seq_ctrl.sv`
+
+This module runs the scalar `LSTM_cell` across a parameterized scalar input sequence supplied through `x_seq[NUM_STEPS]`.
+
+Behavior:
+
+- Loads `h_init/c_init` when a sequence starts
+- Selects `x_seq[step_count]` for each timestep
+- Feeds each timestep's `h_t/c_t` back as the next timestep's previous state
+- Asserts `done` when `h_final/c_final` are valid
+- Treats `start` as a level-sensitive request, but executes only one sequence per assertion
+- Parks in `WAIT_START_LOW` with `done` high until `start` is deasserted
+
+### 4.8 `BRAM.sv`
 
 This is a simple synchronous 2K x 16 block RAM wrapper.
 
@@ -230,7 +246,7 @@ Role in the future architecture:
 - Likely intended for storing weights, activations, or intermediate vectors
 - Currently not integrated into the LSTM datapath
 
-### 4.8 `MUX.sv`
+### 4.9 `MUX.sv`
 
 This is a generic operand mux from an earlier architecture phase.
 
@@ -254,14 +270,16 @@ The most accurate way to describe the current design is:
 - A reusable MAC-plus-saturation processing core
 - A nonlinear activation block with polynomial sigmoid and derived tanh
 - A datapath for one LSTM cell that computes the four gates sequentially
+- A micro-operation controller for one scalar timestep
+- A sequence controller for parameterized scalar input through `x_seq[NUM_STEPS]`
 - Register storage for intermediate gate activations and final `c_t`, `h_t`
 
 ### Partially designed or implied, but not finished
 
-- A controller FSM that sequences the LSTM micro-operations
-- A fully integrated top-level accelerator around the cell datapath
+- A top-level input or memory path that feeds longer sequences into `x_seq[NUM_STEPS]`
+- A fully integrated top-level accelerator around the cell and sequence controllers
 - Memory orchestration for loading vectors and weights from BRAM
-- A complete simulation environment for the current LSTM cell datapath
+- A complete simulation environment around the future top-level accelerator
 
 ### Present in repo but not aligned with the latest direction
 
@@ -351,15 +369,34 @@ It still expects ports such as:
 
 Those ports do not exist in the current RTL. This means the testbench represents an older architecture phase and should not be treated as proof of correctness for the present design.
 
+### `tb_LSTM_seq_ctrl.sv`
+
+This is the current sequence-controller regression test for the parameterized
+`x_seq[NUM_STEPS]` interface. The top-level testbench instantiates the same
+regression flow for `NUM_STEPS = 2`, `NUM_STEPS = 3`, and `NUM_STEPS = 4`.
+
+It checks:
+
+- same-input multi-step execution
+- different later-step `x_seq` selection
+- recurrent-weight feedback through `U_*` terms
+- nonzero bias and mixed-sign input behavior
+- saturation-oriented values
+- cycle-count reporting for each regression case
+- held-high `start` behavior, including the `WAIT_START_LOW` state and return to `IDLE` after `start` is released
+
+Expected values come from `scripts/lstm_seq_golden.cpp`, which models both the RTL fixed-point approximation and ideal real-number LSTM math for comparison.
+
 ## 9. Repository Mismatch And Project Maturity
 
 The repository shows a transition in progress.
 
 Evidence:
 
-- `README.md` still describes a more complete build flow than the repo currently contains
-- `LSTM_cell.sv` is only a placeholder
-- `LSTM_cell_dp.sv` contains the real current implementation work
+- The README now tracks the scalar cell and parameterized sequence-controller milestone, while the full deployable accelerator flow is still future work
+- `LSTM_cell.sv` now wraps the datapath and cell controller for one timestep
+- `LSTM_seq_ctrl.sv` adds a verified parameterized scalar sequence controller
+- `LSTM_cell_dp.sv` contains the main arithmetic datapath implementation
 - Some modules reflect earlier experiments around normalization and generalized processing
 - The most complete verification is concentrated around the activation block
 
@@ -372,4 +409,4 @@ So the best interpretation is:
 
 If someone needs to understand the project quickly, the core message is:
 
-This repository currently implements the arithmetic backbone of a fixed-point LSTM cell on FPGA. The design uses one shared MAC-based processor, saturation logic, and a piecewise-polynomial activation unit to compute the four LSTM gates sequentially. The most important completed module is `LSTM_cell_dp.sv`, which already captures the intended gate-by-gate datapath and register flow. What is still missing is the surrounding control FSM, memory integration, and a polished top-level system that turns this datapath into a complete deployable accelerator.
+This repository currently implements a scalar fixed-point LSTM execution path on FPGA. The design uses one shared MAC-based processor, saturation logic, and a piecewise-polynomial activation unit to compute the four LSTM gates sequentially. `LSTM_cell.sv` combines the cell datapath with a micro-operation controller for one timestep, and `LSTM_seq_ctrl.sv` sequences that cell over `x_seq[NUM_STEPS]` while preserving recurrent `h/c` state. What is still missing is memory integration and a polished top-level system that turns this scalar path into a complete deployable accelerator.
