@@ -23,7 +23,7 @@ module tb_LSTM_seq_ctrl;
 
     initial begin
         wait (done_2_steps && done_3_steps && done_4_steps);
-        #20;
+        #100;
         $finish;
     end
 
